@@ -449,7 +449,7 @@ class DARDetHead(ATSSHead, FCOSHead):
 
             # pos_decoded_bbox_preds = distance2bbox(pos_points, pos_bbox_preds)
             # pos_decoded_target_preds = distance2bbox(pos_points, pos_bbox_targets)
-            pos_decoded_rbox_preds_angle = distance2rbox(pos_points, pos_bbox_preds)#解码直接预测的rbox
+            pos_decoded_rbox_preds_angle = distance2rbox(pos_points, pos_bbox_preds)#解码直接预测的rbox, pos_bbox_preds: (x',y',w',h',theta')
             pos_decoded_rbox_target= distance2bbox(pos_points, pos_rbox_targets)#[...,4:12])#解码回归的四个点
             pos_decoded_rbox_target_angle=poly_to_rotated_box(pos_decoded_rbox_target, pos_labels, label_list=self.circle_id)
             # iou_targets_ini = bbox_overlaps(
@@ -492,7 +492,7 @@ class DARDetHead(ATSSHead, FCOSHead):
                 weight=bbox_weights_rf,
                 avg_factor=bbox_avg_factor_rf)
 
-            # build IoU-aware cls_score targets
+            # build IoU-aware cls_score targets: the target become to pos_ious between pred_rf and targets
             if self.use_vfl:
                 pos_ious = iou_targets_rf.clone().detach()
                 cls_iou_targets = torch.zeros_like(flatten_cls_scores)

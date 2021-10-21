@@ -14,6 +14,7 @@ from .wider_face import WIDERFaceDataset
 from .xml_style import XMLDataset
 from .dota_k import DotaKDataset
 from .dota import DotaDataset
+from .pod_datasets import PODDataset
 __all__ = [
     'CustomDataset', 'XMLDataset', 'CocoDataset', 'DeepFashionDataset',
     'VOCDataset', 'CityscapesDataset', 'LVISDataset', 'LVISV05Dataset',
@@ -21,5 +22,5 @@ __all__ = [
     'DistributedSampler', 'build_dataloader', 'ConcatDataset', 'RepeatDataset',
     'ClassBalancedDataset', 'WIDERFaceDataset', 'DATASETS', 'PIPELINES',
     'build_dataset', 'replace_ImageToTensor', 'get_loading_pipeline',
-    'NumClassCheckHook','DotaKDataset','DotaDataset'
+    'NumClassCheckHook','DotaKDataset','DotaDataset', 'PODDataset'
 ]

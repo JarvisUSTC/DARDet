@@ -15,7 +15,7 @@ from mmdet.core import eval_recalls
 from .builder import DATASETS
 from .custom import CustomDataset
 import xml.etree.ElementTree as ET
-from DOTA_devkit.ResultMerge_multi_process import mergebypoly
+from DOTA_devkit.ResultMerge_multi_process import mergebypoly_multiprocess # mergebypoly
 from DOTA_devkit.dota_evaluation_task1 import voc_eval
 # from mmdet.core import poly_to_rotated_box_single 
 import shutil
@@ -529,7 +529,8 @@ class DotaKDataset(CustomDataset):
         self.result_to_txt(results, os.path.join(dst_raw_path,'result2txtdirect'))
 
         print('Merge results to {}'.format(dst_merge_path))
-        mergebypoly(os.path.join(dst_raw_path,'result2txtdirect'), dst_merge_path)
+        # mergebypoly(os.path.join(dst_raw_path,'result2txtdirect'), dst_merge_path)
+        mergebypoly_multiprocess(os.path.join(dst_raw_path,'result2txtdirect'), dst_merge_path)
 
         print('Start evaluation')
         detpath = osp.join(dst_merge_path, 'Task1_{:s}.txt')

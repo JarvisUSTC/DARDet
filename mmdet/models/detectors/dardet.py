@@ -114,8 +114,8 @@ class DARDet(SingleStageDetector):
         image = image.astype(np.uint8).squeeze()
         image = transforms.ToPILImage()(image)
         image = image.resize((256, 256),Image.ANTIALIAS)
-        image.show(image)
-            # image.save('./img.jpg')
+        # image.show(image)
+        image.save('./img.jpg')
     
     def load_semantic_map_from_mask(self, gt_boxes, gt_masks, gt_labels,feature_shape):
         pad_shape=feature_shape[-2:]
@@ -139,13 +139,21 @@ class DARDet(SingleStageDetector):
                       gt_bboxes_ignore=None,
                       gt_masks=None
                       ):
-
+        self.debug = False
+        if self.debug:
+            img_name = 'debug_for_gt.jpg'
+            img_debug = np.int8(np.copy(img[0].cpu().numpy()).transpose(1,2,0)*255).copy()
+            gt_masks_debug = gt_masks[0].masks
+            for mask_debug in gt_masks_debug:
+                mask_points = mask_debug[0].reshape(-1,1,2).astype(np.int32)
+                cv2.polylines(img=img_debug, pts=[mask_points], isClosed=True, color=(0,0,255), thickness=3)
+            cv2.imwrite(img_name, img_debug)
         super(SingleStageDetector, self).forward_train(img, img_metas)
         x = self.extract_feat(img)
         # self.imshow_gpu_tensor(img)
     
         gt_mask_arrays=[]
-        for i in  gt_masks:
+        for i in gt_masks:
             gt_mask_array=np.array(i.masks).squeeze()
             gt_mask_array = gt_mask_array.astype(float)  # numpy强制类型转换
             gt_mask_array=gt_bboxes[0].new_tensor(gt_mask_array)

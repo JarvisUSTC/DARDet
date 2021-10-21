@@ -15,7 +15,7 @@ from mmdet.core import eval_recalls
 from .builder import DATASETS
 from .custom import CustomDataset
 import xml.etree.ElementTree as ET
-from DOTA_devkit.ResultMerge_multi_process import mergebypoly
+from DOTA_devkit.ResultMerge_multi_process import mergebypoly_multiprocess
 from DOTA_devkit.dota_evaluation_task1 import voc_eval
 from .dota_k import DotaKDataset
 import shutil
