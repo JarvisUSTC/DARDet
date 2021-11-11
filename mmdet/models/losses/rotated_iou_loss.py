@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from .rotation_giou import IoU_Rotated_Rectangle, GIoU_Rotated_Rectangle
 from mmdet.ops import box_iou_rotated_differentiable
 from ..builder import LOSSES
 # from ..registry import LOSSES
@@ -7,7 +8,7 @@ from .utils import weighted_loss
 
 
 @weighted_loss
-def iou_loss(pred, target, linear=False, eps=1e-6):
+def iou_loss(pred, target, linear=False, eps=1e-6, iou='piou'):
     """IoU loss.
 
     Computing the IoU loss between a set of predicted bboxes and target bboxes.
@@ -24,8 +25,25 @@ def iou_loss(pred, target, linear=False, eps=1e-6):
     Return:
         Tensor: Loss tensor.
     """
-    ious = box_iou_rotated_differentiable(pred, target).clamp(min=eps)
-    if linear:
+    if iou=='piou':
+        ious = box_iou_rotated_differentiable(pred, target).clamp(min=eps)
+    elif iou=='iou':
+        temp_list = []
+        pred_iou = pred.clone()
+        pred_iou[...,2:4] = pred_iou[...,2:4] - 1
+        target_iou = target.clone().detach()
+        target_iou[...,2:4] = target_iou[...,2:4] - 1
+        for pred_, target_ in zip(pred_iou,target_iou):
+            temp_list.append(IoU_Rotated_Rectangle(pred_, target_, radian=True))
+        ious = torch.stack(temp_list).clamp(min=eps)
+    elif iou=='giou':
+        temp_list = []
+        for pred_, target_ in zip(pred,target):
+            temp_list.append(GIoU_Rotated_Rectangle(pred_, target_, radian=True))
+        ious = torch.stack(temp_list)
+    else:
+        raise NotImplemented
+    if linear or iou=='giou':
         loss = 1 - ious
     else:
         loss = -ious.log()
@@ -35,12 +53,13 @@ def iou_loss(pred, target, linear=False, eps=1e-6):
 #@LOSSES.register_module
 class RotatedIoULoss(nn.Module):
 
-    def __init__(self, linear=False, eps=1e-6, reduction='mean', loss_weight=1.0):
+    def __init__(self, linear=False, eps=1e-6, reduction='mean', loss_weight=1.0, iou='piou'):
         super(RotatedIoULoss, self).__init__()
         self.linear = linear
         self.eps = eps
         self.reduction = reduction
         self.loss_weight = loss_weight
+        self.iou = iou
 
     def forward(self,
                 pred,
@@ -71,5 +90,6 @@ class RotatedIoULoss(nn.Module):
             eps=self.eps,
             reduction=reduction,
             avg_factor=avg_factor,
+            iou=self.iou,
             **kwargs)
         return loss

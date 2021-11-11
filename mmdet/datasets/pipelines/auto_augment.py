@@ -604,13 +604,19 @@ class Rotate:
             center = ((w - 1) * 0.5, (h - 1) * 0.5)
         # angle = random_negative(self.angle, self.random_negative_prob)
         angle = np.random.rand() *self.max_rotate_angle #随即产生一个角度 一半概率使用 随即产生的角度，另一半概率使用90 180 270的角度
-        nump_rand=np.random.rand()
-        if nump_rand <0.15:
-            angle=90
-        elif nump_rand <0.30:
-            angle=180
-        elif nump_rand <0.45:
-            angle=270
+        if np.random.rand() > self.prob - (1-self.prob):
+            angle_list = [45,135,225,315]
+            angle = np.random.choice(np.array(angle_list)) + (np.random.rand() * 2 * 5 - 5)
+        else:
+            angle = np.random.rand() *self.max_rotate_angle
+
+        # nump_rand=np.random.rand()
+        # if nump_rand <0.15:
+        #     angle=90
+        # elif nump_rand <0.30:
+        #     angle=180
+        # elif nump_rand <0.45:
+        #     angle=270
         # print(angle)
         # self._rotate_img(results, angle, center, self.scale)
         # rotate_matrix = cv2.getRotationMatrix2D(center, -angle, self.scale)

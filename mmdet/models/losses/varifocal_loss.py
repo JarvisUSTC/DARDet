@@ -51,6 +51,7 @@ def varifocal_loss(pred,
             (target <= 0.0).float()
     loss = F.binary_cross_entropy_with_logits(
         pred, target, reduction='none') * focal_weight
+    print('positive fraction {}; negtive fraction {}; negtive samples/positive samples {}'.format(loss[target>0].sum()/loss.sum(),loss[target==0].sum()/loss.sum(),(target==0).sum()/(target>0).sum()))
     loss = weight_reduce_loss(loss, weight, reduction, avg_factor)
     return loss
 

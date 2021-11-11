@@ -39,8 +39,9 @@ model = dict(
             gamma=2.0,
             iou_weighted=True,
             loss_weight=1.0),
-        loss_rbox=dict(type='RotatedIoULoss', loss_weight=1.5),
-        loss_rbox_refine=dict(type='RotatedIoULoss', loss_weight=2.0)),
+        loss_rbox=dict(type='RotatedIoULoss', loss_weight=1.5, iou='piou'),
+        loss_rbox_refine=dict(
+            type='RotatedIoULoss', loss_weight=2.0, iou='piou')),
     train_cfg=dict(
         assigner=dict(type='ATSSAssigner', topk=9),
         allowed_border=-1,
@@ -65,12 +66,14 @@ train_pipeline = [
         with_mask=True,
         poly2mask=False),
     dict(
+        type='Rotate',
+        prob=0.9,
+        auto_bound=True,
+        max_rotate_angle=360,
+        img_fill_val=0),
+    dict(
         type='AutoAugment',
         policies=[[{
-            'type': 'Rotate',
-            'prob': 0.9,
-            'auto_bound': True
-        }, {
             'type':
             'Resize',
             'img_scale': [(320, 1024), (416, 1024), (512, 1024), (608, 1024),
@@ -85,17 +88,6 @@ train_pipeline = [
                       'img_scale': [(416, 1024), (512, 1024), (608, 1024)],
                       'multiscale_mode': 'value',
                       'keep_ratio': True
-                  }, {
-                      'type':
-                      'Resize',
-                      'img_scale': [(320, 1024), (416, 1024), (512, 1024),
-                                    (608, 1024), (704, 1024), (800, 1024)],
-                      'multiscale_mode':
-                      'value',
-                      'override':
-                      True,
-                      'keep_ratio':
-                      True
                   }]]),
     dict(
         type='Normalize',
@@ -140,10 +132,7 @@ data = dict(
         classes=('table', 'keyvalue'),
         type='PODDataset',
         ann_file=[
-            '/datadisk/v-jiaweiwang/data/POD_coco_format/annotations/train_2.json',
-            '/datadisk/v-jiaweiwang/data/POD_coco_format/annotations/train_1.json',
-            '/datadisk/v-jiaweiwang/data/POD_coco_format/annotations/train_3.json',
-            '/datadisk/v-jiaweiwang/data/POD_coco_format/annotations/train_4.json'
+            '/datadisk/v-jiaweiwang/data/POD_coco_format/annotations/train_2.json'
         ],
         img_prefix='/datadisk/v-jiaweiwang/data/POD_coco_format/train/',
         pipeline=[
@@ -154,12 +143,14 @@ data = dict(
                 with_mask=True,
                 poly2mask=False),
             dict(
+                type='Rotate',
+                prob=0.9,
+                auto_bound=True,
+                max_rotate_angle=360,
+                img_fill_val=0),
+            dict(
                 type='AutoAugment',
                 policies=[[{
-                    'type': 'Rotate',
-                    'prob': 0.9,
-                    'auto_bound': True
-                }, {
                     'type':
                     'Resize',
                     'img_scale': [(320, 1024), (416, 1024), (512, 1024),
@@ -175,18 +166,6 @@ data = dict(
                                             (608, 1024)],
                               'multiscale_mode': 'value',
                               'keep_ratio': True
-                          }, {
-                              'type':
-                              'Resize',
-                              'img_scale': [(320, 1024), (416, 1024),
-                                            (512, 1024), (608, 1024),
-                                            (704, 1024), (800, 1024)],
-                              'multiscale_mode':
-                              'value',
-                              'override':
-                              True,
-                              'keep_ratio':
-                              True
                           }]]),
             dict(
                 type='Normalize',
@@ -234,7 +213,7 @@ data = dict(
                 ])
         ]))
 optimizer = dict(type='SGD', lr=0.005, momentum=0.9, weight_decay=0.0001)
-optimizer_config = dict(grad_clip=None)
+optimizer_config = dict(grad_clip=dict(max_norm=5, norm_type=2))
 lr_config = dict(
     policy='step',
     warmup='linear',
@@ -242,8 +221,8 @@ lr_config = dict(
     warmup_ratio=0.001,
     step=[16, 22])
 runner = dict(type='EpochBasedRunner', max_epochs=24)
-work_dir = './'
-load_from = None
+work_dir = '/datadisk/v-jiaweiwang/DARDet'
+load_from = '/datadisk/v-jiaweiwang/Checkpoints/MMDetection/DARDet/exp1_v4/latest.pth'
 resume_from = None
 evaluation = dict(
     interval=3,
@@ -256,4 +235,4 @@ custom_hooks = [dict(type='NumClassCheckHook')]
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 workflow = [('train', 1)]
-gpu_ids = range(0, 2)
+gpu_ids = range(0, 1)

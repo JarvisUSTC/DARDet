@@ -52,11 +52,15 @@ def box_iou_rotated_differentiable(boxes1: torch.Tensor, boxes2: torch.Tensor, i
     """
     # transform to polygons
     polys1 = rotated_box_to_poly(boxes1)
+    print(polys1)
     polys2 = rotated_box_to_poly(boxes2)
+    print(polys2)
     # calculate insection areas
     inter_area, _ = oriented_box_intersection_2d(polys1, polys2)
+    print(inter_area)
     area1 = boxes1[..., 2] * boxes1[..., 3]
     area2 = boxes2[..., 2] * boxes2[..., 3]
+    print(area1,area2)
     union = area1 + area2 - inter_area
     iou = inter_area / union
     if iou_only:

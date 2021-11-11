@@ -10,42 +10,27 @@ import threading
 import torch
 import numpy as np
 from xml.dom.minidom import Document
+import os.path as osp
+import warnings
 
-from detectron2.config import get_cfg
-from detectron2.data.detection_utils import read_image
-from detectron2.utils.logger import setup_logger
-from detectron2.utils.polygon_processing_modified import py_cpu_oriented_nms_modified, bbox_adjust_polygon, validate_clockwise_points, py_cpu_polygon_nms_modified, bbox_adjust_polygon_v2
-from detectron2.utils.polyfit_text_line import polyfit_curve_text_line
-from detectron2.utils.curve_text_classification import curve_text_lines_classification
-from detectron2.structures import Boxes, QuadBoxes, Instances
-from detectron2.engine.defaults import DefaultPredictor
+import mmcv
+from mmcv import Config, DictAction
+from mmcv.cnn import fuse_conv_bn
+from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
+from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
+                         wrap_fp16_model)
+
+from mmdet.apis import multi_gpu_test, single_gpu_test
+from mmdet.datasets import (build_dataloader, build_dataset,
+                            replace_ImageToTensor)
+from mmdet.models import build_detector
 
 # constants
 WINDOW_NAME = "COCO detections"
 
 
-def setup_cfg(args):
-    # load config from file and command-line arguments
-    cfg = get_cfg()
-    cfg.merge_from_file(args.config_file)
-    cfg.merge_from_list(args.opts)
-    # Set score_threshold for builtin models
-    cfg.MODEL.RETINANET.SCORE_THRESH_TEST = args.confidence_threshold
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = args.confidence_threshold
-    cfg.MODEL.PANOPTIC_FPN.COMBINE.INSTANCES_CONFIDENCE_THRESH = args.confidence_threshold
-    cfg.OUTPUT_DIR = args.output
-    cfg.freeze()
-    return cfg
-
-
-def get_parser():
-    parser = argparse.ArgumentParser(description="Detectron2 demo for builtin models")
-    parser.add_argument(
-        "--config-file",
-        default="configs/quick_schedules/mask_rcnn_R_50_FPN_inference_acc_test.yaml",
-        metavar="FILE",
-        help="path to config file",
-    )
+def parse_args():
+    parser = argparse.ArgumentParser(  description='MMDet test (and eval) a model')
     parser.add_argument(
         '--im_or_folder',
         default="",
@@ -65,9 +50,6 @@ def get_parser():
         '--no_demo', action='store_true'
     )
     parser.add_argument(
-        '--do_eval', action='store_true'
-    )
-    parser.add_argument(
         '--num_loader', type=int, default=0,
     )
     parser.add_argument(
@@ -76,7 +58,85 @@ def get_parser():
         default=[],
         nargs=argparse.REMAINDER,
     )
-    return parser
+    work_dir = './'
+    parser.add_argument('--config', default='/media/zf/E/Dataset/2021ZKXT_aug_2/dardet_r50_fpn_DCN_rotate_2x.py',help='test config file path')
+    parser.add_argument('--checkpoint', default=os.path.join(work_dir,'epoch_15.pth'),help='checkpoint file')
+    parser.add_argument(
+        '--fuse-conv-bn',
+        action='store_true',
+        help='Whether to fuse conv and bn, this will slightly increase'
+        'the inference speed')
+    parser.add_argument(
+        '--work-dir',
+        help='the directory to save the file containing evaluation metrics')
+    parser.add_argument(
+        '--format-only',
+        action='store_true',
+        help='Format the output results without perform evaluation. It is'
+        'useful when you want to format the result to a specific format and '
+        'submit it to the test server')
+    parser.add_argument(
+        '--eval',
+        type=str,
+        default = 'bbox',
+        nargs='+',
+        help='evaluation metrics, which depends on the dataset, e.g., "bbox",'
+        ' "segm", "proposal" for COCO, and "mAP", "recall" for PASCAL VOC')
+
+    parser.add_argument(
+        '--show-score-thr',
+        type=float,
+        default=0.3,
+        help='score threshold (default: 0.3)')
+    parser.add_argument(
+        '--gpu-collect',
+        action='store_true',
+        help='whether to use gpu to collect results.')
+    parser.add_argument(
+        '--tmpdir',
+        help='tmp directory used for collecting results from multiple '
+        'workers, available when gpu-collect is not specified')
+    parser.add_argument(
+        '--cfg-options',
+        nargs='+',
+        action=DictAction,
+        help='override some settings in the used config, the key-value pair '
+        'in xxx=yyy format will be merged into config file. If the value to '
+        'be overwritten is a list, it should be like key="[a,b]" or key=a,b '
+        'It also allows nested list/tuple values, e.g. key="[(a,b),(c,d)]" '
+        'Note that the quotation marks are necessary and that no white space '
+        'is allowed.')
+    parser.add_argument(
+        '--options',
+        nargs='+',
+        action=DictAction,
+        help='custom options for evaluation, the key-value pair in xxx=yyy '
+        'format will be kwargs for dataset.evaluate() function (deprecate), '
+        'change to --eval-options instead.')
+    parser.add_argument(
+        '--eval-options',
+        nargs='+',
+        action=DictAction,
+        help='custom options for evaluation, the key-value pair in xxx=yyy '
+        'format will be kwargs for dataset.evaluate() function')
+    parser.add_argument(
+        '--launcher',
+        choices=['none', 'pytorch', 'slurm', 'mpi'],
+        default='none',
+        help='job launcher')
+    parser.add_argument('--local_rank', type=int, default=0)
+    args = parser.parse_args()
+    if 'LOCAL_RANK' not in os.environ:
+        os.environ['LOCAL_RANK'] = str(args.local_rank)
+
+    if args.options and args.eval_options:
+        raise ValueError(
+            '--options and --eval-options cannot be both '
+            'specified, --options is deprecated in favor of --eval-options')
+    if args.options:
+        warnings.warn('--options is deprecated in favor of --eval-options')
+        args.eval_options = args.options
+    return args
 
 def get_text_lines(rois, rois_scores, poly_rois, rois_group_id, rois_quad_labels, roi_classes, frcn_conf_thresh, deg, textline_points):
 
@@ -244,6 +304,48 @@ def draw_box_on_img(box, draw_surface, color, width=3):
     cv2.circle(draw_surface,(box[-2], box[-1]),25,circle_color[-1], -1)
     cv2.line(draw_surface, (box[-2], box[-1]), (box[0], box[1]), color, width)
 
+def read_image(file_name, format=None, package="PIL"):
+    """
+    Read an image into the given format.
+    Will apply rotation and flipping if the image has such exif information.
+
+    Args:
+        file_name (str): image file path
+        format (str): one of the supported image modes in PIL, or "BGR"
+
+    Returns:
+        image (np.ndarray): an HWC image in the given format.
+    """
+    from PIL import Image, ImageOps
+    if package == "PIL":
+        with open(file_name, "rb") as f:
+            image = Image.open(f)
+
+            # capture and ignore this bug: https://github.com/python-pillow/Pillow/issues/3973
+            try:
+                image = ImageOps.exif_transpose(image)
+            except Exception:
+                pass
+
+            if format is not None:
+                # PIL only supports RGB, so convert to RGB and flip channels over below
+                conversion_format = format
+                if format == "BGR":
+                    conversion_format = "RGB"
+                image = image.convert(conversion_format)
+            image = np.asarray(image)
+            if format == "BGR":
+                # flip channels if needed
+                image = image[:, :, ::-1]
+            # PIL squeezes out the channel dimension for "L", so make it HWC
+            if format == "L":
+                image = np.expand_dims(image, -1)
+            return image
+    else:
+        assert package == "cv2"
+        image = cv2.imread(file_name)
+        return image
+
 def img_reader(img_list, img_queue, idxes, package):
     n = len(idxes)
     for i, idx in enumerate(idxes):
@@ -282,12 +384,28 @@ def random_rotate(image, angle_list=[0], jitter_degree=5):
 
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
-    args = get_parser().parse_args()
-    setup_logger(name="fvcore")
-    logger = setup_logger()
-    logger.info("Arguments: " + str(args))
+    args = parse_args()
+    assert args.out or args.eval or args.format_only or args.show \
+        or args.show_dir, \
+        ('Please specify at least one operation (save/eval/format/show the '
+         'results / save the results) with the argument "--out", "--eval"'
+         ', "--format-only", "--show" or "--show-dir"')
+    if args.eval and args.format_only:
+        raise ValueError('--eval and --format_only cannot be both specified')
+    if args.out is not None and not args.out.endswith(('.pkl', '.pickle')):
+        raise ValueError('The output file must be a pkl file.')
+    
+    cfg = Config.fromfile(args.config)
+    if args.cfg_options is not None:
+        cfg.merge_from_dict(args.cfg_options)
 
-    cfg = setup_cfg(args)
+    # import modules from string list.
+    if cfg.get('custom_imports', None):
+        from mmcv.utils import import_modules_from_strings
+        import_modules_from_strings(**cfg['custom_imports'])
+    # set cudnn_benchmark
+    if cfg.get('cudnn_benchmark', False):
+        torch.backends.cudnn.benchmark = True
 
     if os.path.isfile(args.im_or_folder):
         name_list = [args.im_or_folder]
@@ -324,7 +442,44 @@ if __name__ == "__main__":
         if not os.path.isdir(_):
             os.makedirs(_)
 
-    predictor = DefaultPredictor(cfg)
+    cfg.model.pretrained = None
+    if cfg.model.get('neck'):
+        if isinstance(cfg.model.neck, list):
+            for neck_cfg in cfg.model.neck:
+                if neck_cfg.get('rfp_backbone'):
+                    if neck_cfg.rfp_backbone.get('pretrained'):
+                        neck_cfg.rfp_backbone.pretrained = None
+        elif cfg.model.neck.get('rfp_backbone'):
+            if cfg.model.neck.rfp_backbone.get('pretrained'):
+                cfg.model.neck.rfp_backbone.pretrained = None
+    
+    # init distributed env first, since logger depends on the dist info.
+    if args.launcher == 'none':
+        distributed = False
+    else:
+        distributed = True
+        init_dist(args.launcher, **cfg.dist_params)
+    rank, _ = get_dist_info()
+    # build the model and load checkpoint
+    cfg.model.train_cfg = None
+    model = build_detector(cfg.model, test_cfg=cfg.get('test_cfg'))
+    fp16_cfg = cfg.get('fp16', None)
+    if fp16_cfg is not None:
+        wrap_fp16_model(model)
+    checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
+    if args.fuse_conv_bn:
+        model = fuse_conv_bn(model)
+    # old versions did not save class info in checkpoints, this walkaround is
+    # for backward compatibility
+    if 'CLASSES' in checkpoint.get('meta', {}):
+        model.CLASSES = checkpoint['meta']['CLASSES']
+    else:
+        model.CLASSES = cfg.classes
+    if not distributed:
+        model = MMDataParallel(model, device_ids=[0])                
+        model.eval()
+    else:
+        raise ValueError('Single GPU Test')
 
     count = 0
     for path in tqdm.tqdm(name_list, disable=False):

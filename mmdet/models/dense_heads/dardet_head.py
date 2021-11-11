@@ -6,6 +6,7 @@ from mmcv.ops import DeformConv2d
 from mmcv.runner import force_fp32
 
 from mmdet.core import (bbox2distance, bbox_overlaps, build_anchor_generator,distance2rbox,multiclass_nms_rotated_bbox,rotated_box_to_poly,poly_to_rotated_box,
+                        multiclass_without_nms_rotated_bbox,
                         build_assigner, build_sampler, distance2bbox,
                         multi_apply, multiclass_nms, reduce_mean)
 from ..builder import HEADS, build_loss
@@ -317,6 +318,8 @@ class DARDetHead(ATSSHead, FCOSHead):
         cls_feat = self.relu(self.vfnet_cls_dconv(cls_feat, dcn_offset))
         cls_score = self.vfnet_cls(cls_feat)
 
+        # Test w/o ACM refine
+        # bbox_pred_refine = bbox_pred # TODO
         return cls_score, bbox_pred, bbox_pred_refine
 
     def r_dcn_offset(self, bbox_pred, gradient_mul, stride):
@@ -664,7 +667,11 @@ class DARDetHead(ATSSHead, FCOSHead):
                                                         cfg.max_per_img)
             return det_bboxes, det_labels
         else:
-            return mlvl_bboxes, mlvl_scores
+            det_bboxes,  det_labels = multiclass_without_nms_rotated_bbox(mlvl_rboxes,#mlvl_bboxes
+                                                        mlvl_scores,
+                                                        cfg.score_thr,
+                                                        cfg.max_per_img)
+            return det_bboxes, det_labels
 
     def _get_points_single(self,
                            featmap_size,

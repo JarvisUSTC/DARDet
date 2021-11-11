@@ -2,7 +2,6 @@ import argparse
 import os
 import json
 import numpy as np
-from mmcv import Config
 
 
 def parse_args():
@@ -55,7 +54,8 @@ def main():
     #<========================Change Here==========================================
     config_file = "./configs/{}/{}.py".format(args.expName, args.expCode) #DARDet/exp1.py
     copy_data_from_blob(config_file)
-    cfg = Config.fromfile(args.config)
+    from mmcv import Config
+    cfg = Config.fromfile(config_file)
     if args.node_nums > 1:
         assert args.node_nums == 1, "for now, only support single node"
     else:
@@ -63,7 +63,7 @@ def main():
         cmd += "export MKL_THREADING_LAYER=GNU \n"
         cmd += "mkdir -p {} \n".format(tmp_outdir)
         cmd += "cp {}/* {} \n".format(output_dir, tmp_outdir)
-        cmd += "python -m torch.distributed.launch --nproc_per_node={} tools/train.py {}  --launcher pytorch --work-dir {}".format(args.gpus_per_node,config_file,tmp_outdir)
+        cmd += "python -m torch.distributed.launch --nproc_per_node={} tools/train.py {}  --launcher pytorch --work-dir {} --no-validate".format(args.gpus_per_node,config_file,tmp_outdir)
         print(cmd)
         os.system(cmd)
     # As it is too slow when writing logs into Azure Blob in realtime, we first log it in the dorcker image and copy it into Azure Blob finally.
@@ -122,15 +122,15 @@ def main():
     cmd += "mkdir -p /mmdetection/tools/msra_pod_measurement_tool/test_dataset \n"
     cmd += "ln -s /mmdetection/datasets/POD_RevB_combined/raw_images_horizontal /mmdetection/tools/msra_pod_measurement_tool/test_dataset/images \n"
     cmd += "ln -s /mmdetection/datasets/POD_RevB_combined/xml /mmdetection/tools/msra_pod_measurement_tool/test_dataset/xml \n"
-    cmd += "python /mmdetection/tools/demo_pod.py --config-file {} --im_or_folder /mmdetection/datasets/POD_RevB_combined/raw_images_horizontal/ --output /origin_results/ --confidence-threshold 0.1 --do_eval --num_loader 64 --opts MODEL.WEIGHTS {}/{}/{}/{}/box_refinement/model_final.pth MODEL.RPN_ONLY False DEBUG False \n".format(config_file, root_path, args.expName, args.expCode, args.expVersion)
+    cmd += "python /mmdetection/demo/inference_demo_pod.py --config {} --im_or_folder /mmdetection/datasets/POD_RevB_combined/raw_images_horizontal/ --output /origin_results/ --num_loader 64 --checkpoint {}/{}/{}/{}/output/latest.pth \n".format(config_file, root_path, args.expName, args.expCode, args.expVersion)
     cmd += "cd /origin_results/txt \n"    
     cmd += "sudo find ./ -mindepth 1 -maxdepth 1 -name '*.txt' | sudo zip -q /res_txt.zip -@ \n"
     #<========================Change Here============================================
-    cmd += "sudo cp /res_txt.zip {}/{}/{}/{}/box_refinement/res_txt_th0.5_horizontal.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
+    cmd += "sudo cp /res_txt.zip {}/{}/{}/{}/output/res_txt_th0.5_horizontal.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
     cmd += "cd /origin_results/image \n"
     cmd += "sudo find ./ -mindepth 1 -maxdepth 1 -name '*.jpg' | sudo zip -q /res_ims.zip -@ \n"
     #<========================Change Here============================================
-    cmd += "sudo cp /res_ims.zip {}/{}/{}/{}/box_refinement/res_ims_th0.5_horizontal.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
+    cmd += "sudo cp /res_ims.zip {}/{}/{}/{}/output/res_ims_th0.5_horizontal.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
     # cmd += "cd /detectron \n"
     # cmd += "python /detectron/tools/demo_pod.py --config-file {} --im_or_folder /blob/data/kownlege_lake_testset/test_images/ --output /origin_results2/ --confidence-threshold 0.1 --num_loader 64 --opts MODEL.WEIGHTS {}/{}/{}/{}/frcn/model_final.pth MODEL.RPN_ONLY False DEBUG False \n".format(config_file, root_path, args.expName, args.expCode, args.expVersion)
     #<========================Change Here============================================
@@ -143,21 +143,21 @@ def main():
     # Make result file for Rotated_360_MSRA_POD FRCN test
     cmd = "sudo mkdir /origin_results \n"
     cmd += "sudo chmod -R 777 /origin_results \n"
-    cmd += "local=$(pwd) \n export PYTHONPATH=${local}/detectron2 \n"
-    cmd += "rm -r /detectron/tools/msra_pod_measurement_tool/test_dataset \n"
-    cmd += "rm -rf /detectron/tools/msra_pod_measurement_tool/annots.pkl \n"
-    cmd += "mkdir -p /detectron/tools/msra_pod_measurement_tool/test_dataset \n"
-    cmd += "ln -s /detectron/datasets/rotated_360_POD_RevB_combined/raw_images_horizontal /detectron/tools/msra_pod_measurement_tool/test_dataset/images \n"
-    cmd += "ln -s /detectron/datasets/rotated_360_POD_RevB_combined/xml /detectron/tools/msra_pod_measurement_tool/test_dataset/xml \n"
-    cmd += "python /detectron/tools/demo_pod.py --config-file {} --im_or_folder /detectron/datasets/rotated_360_POD_RevB_combined/raw_images_horizontal/ --output /origin_results/ --confidence-threshold 0.1 --do_eval --num_loader 64 --opts MODEL.WEIGHTS {}/{}/{}/{}/box_refinement/model_final.pth MODEL.RPN_ONLY False DEBUG False \n".format(config_file, root_path, args.expName, args.expCode, args.expVersion)
+    cmd += "local=$(pwd) \n export PYTHONPATH=${local}/mmdet \n"
+    cmd += "rm -r /mmdetection/tools/msra_pod_measurement_tool/test_dataset \n"
+    cmd += "rm -rf /mmdetection/tools/msra_pod_measurement_tool/annots.pkl \n"
+    cmd += "mkdir -p /mmdetection/tools/msra_pod_measurement_tool/test_dataset \n"
+    cmd += "ln -s /mmdetection/datasets/rotated_360_POD_RevB_combined/raw_images_horizontal /mmdetection/tools/msra_pod_measurement_tool/test_dataset/images \n"
+    cmd += "ln -s /mmdetection/datasets/rotated_360_POD_RevB_combined/xml /mmdetection/tools/msra_pod_measurement_tool/test_dataset/xml \n"
+    cmd += "python /mmdetection/demo/inference_demo_pod.py --config {} --im_or_folder /mmdetection/datasets/rotated_360_POD_RevB_combined/raw_images_horizontal/ --output /origin_results/ --num_loader 64 --checkpoint {}/{}/{}/{}/output/latest.pth \n".format(config_file, root_path, args.expName, args.expCode, args.expVersion)
     cmd += "cd /origin_results/txt \n"    
     cmd += "sudo find ./ -mindepth 1 -maxdepth 1 -name '*.txt' | sudo zip -q /res_txt.zip -@ \n"
     #<========================Change Here============================================
-    cmd += "sudo cp /res_txt.zip {}/{}/{}/{}/box_refinement/res_txt_th0.5_360.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
+    cmd += "sudo cp /res_txt.zip {}/{}/{}/{}/output/res_txt_th0.5_360.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
     cmd += "cd /origin_results/image \n"
     cmd += "sudo find ./ -mindepth 1 -maxdepth 1 -name '*.jpg' | sudo zip -q /res_ims.zip -@ \n"
     #<========================Change Here============================================
-    cmd += "sudo cp /res_ims.zip {}/{}/{}/{}/box_refinement/res_ims_th0.5_360.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
+    cmd += "sudo cp /res_ims.zip {}/{}/{}/{}/output/res_ims_th0.5_360.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
     # cmd += "cd /detectron \n"
     # cmd += "python /detectron/tools/demo_pod.py --config-file {} --im_or_folder /blob/data/kownlege_lake_testset/test_images/ --output /origin_results2/ --confidence-threshold 0.1 --num_loader 64 --opts MODEL.WEIGHTS {}/{}/{}/{}/frcn/model_final.pth MODEL.RPN_ONLY False DEBUG False \n".format(config_file, root_path, args.expName, args.expCode, args.expVersion)
     # #<========================Change Here============================================
@@ -170,21 +170,21 @@ def main():
     # Make result file for Rotated_45_MSRA_POD FRCN test
     cmd = "sudo mkdir /origin_results \n"
     cmd += "sudo chmod -R 777 /origin_results \n"
-    cmd += "local=$(pwd) \n export PYTHONPATH=${local}/detectron2 \n"
-    cmd += "rm -r /detectron/tools/msra_pod_measurement_tool/test_dataset \n"
-    cmd += "rm -rf /detectron/tools/msra_pod_measurement_tool/annots.pkl \n"
-    cmd += "mkdir -p /detectron/tools/msra_pod_measurement_tool/test_dataset \n"
-    cmd += "ln -s /detectron/datasets/rotated_45_POD_RevB_combined/raw_images_horizontal /detectron/tools/msra_pod_measurement_tool/test_dataset/images \n"
-    cmd += "ln -s /detectron/datasets/rotated_45_POD_RevB_combined/xml /detectron/tools/msra_pod_measurement_tool/test_dataset/xml \n"
-    cmd += "python /detectron/tools/demo_pod.py --config-file {} --im_or_folder /detectron/datasets/rotated_45_POD_RevB_combined/raw_images_horizontal/ --output /origin_results/ --confidence-threshold 0.1 --do_eval --num_loader 64 --opts MODEL.WEIGHTS {}/{}/{}/{}/box_refinement/model_final.pth MODEL.RPN_ONLY False DEBUG False \n".format(config_file, root_path, args.expName, args.expCode, args.expVersion)
+    cmd += "local=$(pwd) \n export PYTHONPATH=${local}/mmdet \n"
+    cmd += "rm -r /mmdetection/tools/msra_pod_measurement_tool/test_dataset \n"
+    cmd += "rm -rf /mmdetection/tools/msra_pod_measurement_tool/annots.pkl \n"
+    cmd += "mkdir -p /mmdetection/tools/msra_pod_measurement_tool/test_dataset \n"
+    cmd += "ln -s /mmdetection/datasets/rotated_45_POD_RevB_combined/raw_images_horizontal /mmdetection/tools/msra_pod_measurement_tool/test_dataset/images \n"
+    cmd += "ln -s /mmdetection/datasets/rotated_45_POD_RevB_combined/xml /mmdetection/tools/msra_pod_measurement_tool/test_dataset/xml \n"
+    cmd += "python /mmdetection/demo/inference_demo_pod.py --config {} --im_or_folder /mmdetection/datasets/rotated_45_POD_RevB_combined/raw_images_horizontal/ --output /origin_results/ --num_loader 64 --checkpoint {}/{}/{}/{}/output/latest.pth \n".format(config_file, root_path, args.expName, args.expCode, args.expVersion)
     cmd += "cd /origin_results/txt \n"    
     cmd += "sudo find ./ -mindepth 1 -maxdepth 1 -name '*.txt' | sudo zip -q /res_txt.zip -@ \n"
     #<========================Change Here============================================
-    cmd += "sudo cp /res_txt.zip {}/{}/{}/{}/box_refinement/res_txt_th0.5_45.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
+    cmd += "sudo cp /res_txt.zip {}/{}/{}/{}/output/res_txt_th0.5_45.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
     cmd += "cd /origin_results/image \n"
     cmd += "sudo find ./ -mindepth 1 -maxdepth 1 -name '*.jpg' | sudo zip -q /res_ims.zip -@ \n"
     #<========================Change Here============================================
-    cmd += "sudo cp /res_ims.zip {}/{}/{}/{}/box_refinement/res_ims_th0.5_45.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
+    cmd += "sudo cp /res_ims.zip {}/{}/{}/{}/output/res_ims_th0.5_45.zip \n".format(root_path, args.expName, args.expCode, args.expVersion)
     # cmd += "cd /detectron \n"
     # cmd += "python /detectron/tools/demo_pod.py --config-file {} --im_or_folder /blob/data/kownlege_lake_testset/test_images/ --output /origin_results2/ --confidence-threshold 0.1 --num_loader 64 --opts MODEL.WEIGHTS {}/{}/{}/{}/frcn/model_final.pth MODEL.RPN_ONLY False DEBUG False \n".format(config_file, root_path, args.expName, args.expCode, args.expVersion)
     # #<========================Change Here============================================

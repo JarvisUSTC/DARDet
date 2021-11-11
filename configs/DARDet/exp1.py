@@ -52,7 +52,7 @@ model = dict(
         nms_pre=2000,
         min_bbox_size=0,
         score_thr=0.05,
-        nms=dict(type='nms', iou_threshold=0.1),
+        # nms=dict(type='nms', iou_threshold=0.1),
         max_per_img=1500))
 
 # data setting
@@ -64,7 +64,7 @@ classes = ('table', 'keyvalue')
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=True,poly2mask=False),
-    dict(type='Rotate', prob=0.9, auto_bound=True),
+    dict(type='Rotate', prob=0.9, auto_bound=True, max_rotate_angle=360),
     dict(
         type='AutoAugment',
         policies=[[
@@ -156,19 +156,19 @@ dataset_4 = dict(
 )
 
 data = dict(
-    samples_per_gpu=2,
+    samples_per_gpu=1,
     workers_per_gpu=1,
     train=dict(
         classes=classes,
         type='ConcatDataset',
-        dataset=[dataset_1,dataset_2,dataset_3,dataset_4]),
+        datasets=[dataset_1,dataset_2,dataset_3,dataset_4]),
     val=dict(
         classes = classes,
         type = dataset_type,
         ann_file = data_root + 'knowledge_lake_pod_part2/train.json',
         img_prefix = data_root + 'knowledge_lake_pod_part2/JPEGImages',
         pipeline = test_pipeline
-    )
+    ),
     # val=dict(
     #     classes=classes,
     #     type=dataset_type,
@@ -176,16 +176,14 @@ data = dict(
     #     ann_file=data_root + 'annotations/train_3.json',
     #     img_prefix=data_root + 'val/',
     #     pipeline=test_pipeline),
-    # test=dict(
-    #     classes=classes,
-    #     type=dataset_type,
-    #     ann_file=data_root + 'annotations/train_4.json',
-    #     img_prefix=data_root + 'val/',
-    #     pipeline=test_pipeline)
+    test=dict(
+        classes=classes,
+        type=dataset_type,
+        pipeline=test_pipeline)
     )
 
 # optimizer
-optimizer = dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.005, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=None)
 # learning policy
 lr_config = dict(
@@ -193,12 +191,12 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=0.001,
-    step=[16, 22])
-runner = dict(type='EpochBasedRunner', max_epochs=24)
+    step=[32, 44])
+runner = dict(type='EpochBasedRunner', max_epochs=50)
 work_dir = '/datadisk/v-jiaweiwang/DARDet'
 load_from =None#'/media/zf/E/mmdetection213_2080/checkpoint/vfnet_r50_fpn_mdconv_c3-c5_mstrain_2x_coco_20201027pth-6879c318.pth'
 resume_from = None #'/media/zf/E/Dataset/dota1-split-1024/workdir/DARDet_r50_DCN_rotate/latest.pth'
-evaluation = dict(interval=3, metric='bbox',eval_dir= work_dir,
+evaluation = dict(interval=20, metric='bbox',
         gt_dir='/datadisk/v-jiaweiwang/data/POD_RevB_combined/xml')
 checkpoint_config = dict(interval=1)
 log_config = dict(interval=50, hooks=[dict(type='TextLoggerHook')])

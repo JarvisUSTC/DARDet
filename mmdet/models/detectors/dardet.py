@@ -139,7 +139,7 @@ class DARDet(SingleStageDetector):
                       gt_bboxes_ignore=None,
                       gt_masks=None
                       ):
-        self.debug = False
+        self.debug = True
         if self.debug:
             img_name = 'debug_for_gt.jpg'
             img_debug = np.int8(np.copy(img[0].cpu().numpy()).transpose(1,2,0)*255).copy()
@@ -240,12 +240,16 @@ class DARDet(SingleStageDetector):
     def simple_test(self, img, img_metas, rescale=False):
         cfg = self.test_cfg 
         rotate_test=cfg.get('rotate_test', False)
-
+        if 'nms' not in cfg:
+            with_nms = False
+        else:
+            with_nms = True
         if not rotate_test:
             x = self.extract_feat(img)
             outs = self.bbox_head(x)
+            self.debug_vis_score_map(outs[0],img)
             bbox_list = self.bbox_head.get_bboxes(
-                *outs, img_metas, rescale=rescale)
+                *outs, img_metas, rescale=rescale, with_nms=with_nms)
         else:
             #旋转测试
             angles=cfg.get('rotate_test_angles', [0,90,180,270])
@@ -275,6 +279,26 @@ class DARDet(SingleStageDetector):
             self.rbox2result(det_bboxes, det_labels, self.bbox_head.num_classes)
             for det_bboxes,  det_labels  in bbox_list     ]
         return bbox_results
+    
+    def debug_vis_score_map(self, score_map, img):
+        images_cpu = img.cpu().numpy().transpose((0, 2, 3, 1))[0]
+        target_vis = os.path.join("/datadisk/v-jiaweiwang/DARDet/", "debug")
+        if not os.path.isdir(target_vis):
+            os.makedirs(target_vis)
+        with torch.no_grad():
+            im_names = ["{}.jpg".format(np.random.rand()) for _ in range(len(score_map))]
+            for im_idx in range(len(score_map)):
+                im_name = im_names[im_idx]
+                im_vis = images_cpu*np.array([[self.cfg.img_norm_cfg['std']]]) + np.array([[self.cfg.img_norm_cfg['mean']]])
+                cv2.imwrite(os.path.join(target_vis, im_name), im_vis)
+                im_vis = cv2.imread(os.path.join(target_vis, im_name))
+                # score_heat = torch.sigmoid(score_map[im_idx][0,0:1,:,:])
+                score_heat = score_map[im_idx][0,0:1,:,:]
+                score_heat = F.interpolate(score_heat[None], scale_factor=self.bbox_head.strides[im_idx], mode="bilinear", align_corners=True)[0, 0, :im_vis.shape[0], :im_vis.shape[1]]
+                score_heat = score_heat.cpu().numpy().squeeze()
+                idx = np.where(score_heat > 0.5)
+                im_vis[idx[0], idx[1], :] = im_vis[idx[0], idx[1], :] * 0.5 + np.array([[[0, 255, 0]]]) * 0.5
+                cv2.imwrite(os.path.join(target_vis, im_name + ".heatmaps.jpg"), im_vis)
 
 
     # def simple_test(self, img, img_metas, rescale=False):
@@ -361,14 +385,14 @@ class DARDet(SingleStageDetector):
                 # cv2.circle(img, (int(rbox[4]), int(rbox[5])), 3, (255,0,0), -1)
                 # cv2.circle(img, (int(rbox[6]), int(rbox[7])), 2, (255,0,255), -1)
                 # p_rotate=np.int32(np.vstack((rbox[0:2],rbox[2:4],rbox[4:8],rbox[8:10])))  
-                cv2.polylines(img,[np.array(p_rotate)],True,self.color_list[int(labels[i])],thickness)
-                # label_text = class_names[labels[i]] if class_names is not None else f'cls {labels[i]}'
+                cv2.polylines(img,[np.array(p_rotate)],True,self.color_list[int(labels[i])+1],thickness)
+                label_text = class_names[labels[i]] if class_names is not None else f'cls {labels[i]}'
                 
-                # label_text += f'|{points[i][0] :.02f}'
-                # index=np.argmin(p_rotate[:,1])
-                # bbox_int=p_rotate[index]
-                # cv2.putText(img, label_text, (bbox_int[0], bbox_int[1] - 2),
-                #             cv2.FONT_HERSHEY_COMPLEX, font_scale, self.color_list[int(labels[i])])
+                label_text += f'|{points[i][0] :.02f}'
+                index=np.argmin(p_rotate[:,0])
+                bbox_int=p_rotate[index]
+                cv2.putText(img, label_text, (bbox_int[0], bbox_int[1] - 2),
+                            cv2.FONT_HERSHEY_COMPLEX, font_scale, self.color_list[int(labels[i])+1])
 
         if show:
             mmcv.imshow(img, win_name, wait_time)
@@ -520,13 +544,14 @@ class DARDet(SingleStageDetector):
             # rotateboxes=self.box2rotatexml(bboxes,labels)
             rbox=np.hstack((bboxes[...,5:10],bboxes[...,4:5]))
             rotateboxes=self.result2rotatexml(rbox,labels,score_thr)
-            write_rotate_xml(os.path.dirname(out_file),out_file,[1024 ,1024,3],0.5,'0.5',rotateboxes.reshape((-1,8)),self.CLASSES)
+            # write_rotate_xml(os.path.dirname(out_file),out_file,[1024 ,1024,3],0.5,'0.5',rotateboxes.reshape((-1,8)),self.CLASSES)
 
         showboxs=np.hstack((bboxes[...,4:5],bboxes[...,10:]))
                     
         if out_file:
             file_dir=os.path.dirname(out_file)
-            if not  os.path.exists(file_dir):
+            print(file_dir)
+            if not os.path.exists(file_dir):
                 os.mkdir(file_dir)
         img=self.drow_points(img,showboxs,labels,class_names=self.CLASSES,score_thr=score_thr,thickness=thickness,
             font_scale=font_scale,
